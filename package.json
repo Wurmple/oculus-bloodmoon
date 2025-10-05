@@ -1,0 +1,25 @@
+{
+  "name": "oculus-bloodmoon",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Eyeball Physics Game - Phaser 3 TypeScript Starter",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wurmple/oculus-bloodmoon.git"
+  },
+  "author": "oculus",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "phaser": "^3.80.1",
+    "terser": "^5.44.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11"
+  }
+}
