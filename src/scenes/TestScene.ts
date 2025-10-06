@@ -3,11 +3,13 @@ import Phaser from "phaser";
 export class TestScene extends Phaser.Scene {
     private iris?: Phaser.Physics.Arcade.Sprite;
     private portal?: Phaser.Physics.Arcade.Sprite;
+    private branches?: Phaser.Physics.Arcade.Group;
     private dragStartPos?: Phaser.Math.Vector2;
     private dragLine?: Phaser.GameObjects.Graphics;
     private isDragging: boolean = false;
     private joystickBase?: Phaser.GameObjects.Image;
     private joystickNub?: Phaser.GameObjects.Image;
+    private isDying: boolean = false;
 
     constructor() {
         super({key : "TestScene"});
@@ -20,11 +22,20 @@ export class TestScene extends Phaser.Scene {
             frameHeight: 32
         });
 
+        // Load the hurt/death/respawn animation spritesheet
+        this.load.spritesheet('hurt', 'assets/HurtNoShadow.png', {
+            frameWidth: 32,
+            frameHeight: 32
+        });
+
         // Load the idle animation spritesheet
         this.load.spritesheet('portal', 'assets/Portal.png', {
             frameWidth: 32,
             frameHeight: 32
         });
+
+        // Load branch image
+        this.load.image('branch', 'assets/branch.png');
 
         // Load joystick assets
         this.load.image('joystick_nub', 'assets/joystick_circle.png');
@@ -60,6 +71,27 @@ export class TestScene extends Phaser.Scene {
         const leftMiddleX = 100; // Left side of screen
         const centerY = height / 2;
 
+        // Define branch configurations (easy to modify/add/remove)
+        const branchConfigs = [
+            { x: 300, y: height + 50, rotation: 0, scale: 0.5, originX: 0.5, originY: 1 }, // From bottom
+            { x: 500, y: -50, rotation: Math.PI, scale: 0.5, originX: 0.5, originY: 0 }, // From top, flipped
+            { x: 700, y: height + 50, rotation: 0, scale: 0.5, originX: 0.5, originY: 1 }, // From bottom
+        ];
+
+        // Create branches group
+        this.branches = this.physics.add.group();
+        for (const config of branchConfigs) {
+            const branch = this.branches.create(config.x, config.y, 'branch');
+            branch.setRotation(config.rotation);
+            branch.setScale(config.scale);
+            branch.setOrigin(config.originX, config.originY);
+            const branchBody = branch.body as Phaser.Physics.Arcade.Body;
+            branchBody.allowGravity = false;
+            branchBody.setImmovable(true);
+            // For more accurate collision, adjust body size/offset here if needed (e.g., branchBody.setSize(w, h).setOffset(ox, oy))
+            // Based on branch.png's visible boundaries, trimming blank space
+        }
+
         // Create portal
         const portalX = width-100;
         const portalY = 100;
@@ -87,6 +119,16 @@ export class TestScene extends Phaser.Scene {
         this.iris.setMaxVelocity(500);
         this.physics.world.gravity.y = 300; // Slight gravity
 
+        // Set up world bounds collision detection for death
+        const irisBody = this.iris.body as Phaser.Physics.Arcade.Body;
+        irisBody.setCollideWorldBounds(true);
+        irisBody.onWorldBounds = true;
+        this.physics.world.on('worldbounds', (body: Phaser.Physics.Arcade.Body, up: boolean, down: boolean, left: boolean, right: boolean) => {
+            if (body.gameObject === this.iris && !this.isDying) {
+                this.handleDeath();
+            }
+        });
+
         // Create idle animation
         this.anims.create({
             key: 'idle',
@@ -95,8 +137,29 @@ export class TestScene extends Phaser.Scene {
             repeat: -1 // Loop forever
         });
 
+        // Create death and respawn animations
+        this.anims.create({
+            key: 'death',
+            frames: this.anims.generateFrameNumbers('hurt', { start: 0, end: 4 }),
+            frameRate: 20, // Quick animation for arcade feel
+            repeat: 0
+        });
+
+        this.anims.create({
+            key: 'respawn',
+            frames: this.anims.generateFrameNumbers('hurt', { start: 4, end: 8 }),
+            frameRate: 20, // Quick animation for arcade feel
+            repeat: 0
+        });
+
         // Play the idle animation
         this.iris.play('idle');
+
+        // Set up collisions and overlaps
+        if (this.branches) {
+            this.physics.add.collider(this.iris, this.branches, () => this.handleDeath(), undefined, this);
+        }
+        this.physics.add.overlap(this.iris, this.portal, () => this.handleVictory(), undefined, this);
 
         // Create graphics for drag line visualization
         this.dragLine = this.add.graphics();
@@ -184,6 +247,51 @@ export class TestScene extends Phaser.Scene {
 
                 this.dragStartPos = undefined;
             }
+        });
+    }
+
+    private handleDeath() {
+        if (this.isDying || !this.iris) return;
+        this.isDying = true;
+
+        const targetIris = this.iris;
+        targetIris.setVelocity(0, 0);
+        targetIris.setTexture('hurt');
+        targetIris.play('death');
+
+        targetIris.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+            // Quick transition, no extra delay for arcade feel
+            targetIris.play('respawn');
+            targetIris.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                targetIris.setTexture('iris_idle');
+                targetIris.play('idle');
+                targetIris.setPosition(100, this.cameras.main.height / 2);
+                targetIris.setRotation(0); // Reset rotation
+                this.isDying = false;
+            });
+        });
+    }
+
+    private handleVictory() {
+        if (!this.iris) return;
+        this.physics.pause();
+        this.iris.setVelocity(0, 0);
+
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+
+        const victoryText = this.add.text(width / 2, height / 2 - 50, 'Victory!', {
+            fontSize: '48px',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+
+        const redoButton = this.add.text(width / 2, height / 2 + 50, 'Redo Level', {
+            fontSize: '32px',
+            color: '#ffffff'
+        }).setOrigin(0.5).setInteractive();
+
+        redoButton.on(Phaser.Input.Events.POINTER_DOWN, () => {
+            this.scene.restart();
         });
     }
 
